@@ -1,35 +1,30 @@
 // pages/api/chat.ts
 import { streamText } from 'ai';
 import { groq } from '@ai-sdk/groq';
+import { verifySupabaseToken } from '../../lib/auth';
+import { createChatHandler } from '../../lib/chat-handler';
+import { resolveGroqModel } from '../../lib/model';
+import { createSlidingWindowLimiter } from '../../lib/rate-limit';
+import { createSseResponse } from '../../lib/sse-response';
 
 export const config = {
   runtime: 'edge',
 };
 
-export default async function handler(req: Request) {
-  try {
-    const { messages } = await req.json();
+// 模块级实例：同一个 Edge 实例内的请求共享计数（多实例之间不共享，见 rate-limit.ts 的说明）
+const rateLimiter = createSlidingWindowLimiter({ limit: 10, windowMs: 60_000 });
 
-    // ✅ 防止空 messages 报错
-    if (!messages || messages.length === 0) {
-      return new Response(
-        JSON.stringify({ error: 'No messages provided' }),
-        { status: 400 }
-      );
-    }
-
-    const result = await streamText({
-      model: groq('llama-3.3-70b-versatile'),
+export default createChatHandler({
+  verifyToken: verifySupabaseToken,
+  rateLimiter,
+  streamReply: (messages, signal) => {
+    const result = streamText({
+      // 每次请求读取，修改 GROQ_MODEL 后重启服务即可生效
+      model: groq(resolveGroqModel()),
       messages,
+      abortSignal: signal,
     });
-
-    return result.toTextStreamResponse();
-
-  } catch (error: any) {
-    console.error('Groq 服务调用失败:', error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500 }
-    );
-  }
-}
+    // 以 Server-Sent Events 返回：文本帧 + [DONE]，模型中途出错时发送 error 事件（见 sse-response.ts）
+    return createSseResponse(result.fullStream);
+  },
+});
