@@ -20,6 +20,11 @@ const textFrame = (text: string) => encoder.encode(`data: ${JSON.stringify({ tex
 
 export function createSseResponse(source: AsyncIterable<StreamPart>): Response {
   let iterator: AsyncIterator<StreamPart> | undefined;
+  // 诊断用：统计收到的各类 part 数量（只记类型，不记内容），以及是否发出过文本
+  const partCounts = new Map<string, number>();
+  let sentText = false;
+  const partSummary = () =>
+    [...partCounts].map(([type, count]) => `${type}×${count}`).join(', ') || 'none';
 
   const stream = new ReadableStream<Uint8Array>({
     async pull(controller) {
@@ -29,11 +34,16 @@ export function createSseResponse(source: AsyncIterable<StreamPart>): Response {
         while (true) {
           const { done, value } = await iterator.next();
           if (done) {
+            if (!sentText) {
+              console.warn(`[sse] model stream finished without any text; part types: ${partSummary()}`);
+            }
             controller.enqueue(DONE_FRAME);
             controller.close();
             return;
           }
+          partCounts.set(value.type, (partCounts.get(value.type) ?? 0) + 1);
           if (value.type === 'text-delta' && value.text) {
+            sentText = true;
             controller.enqueue(textFrame(value.text));
             return;
           }
@@ -45,7 +55,9 @@ export function createSseResponse(source: AsyncIterable<StreamPart>): Response {
             return;
           }
           if (value.type === 'abort') {
-            // 模型调用被中止（通常是客户端已断开）：直接结束，不发送 [DONE]
+            // 模型调用被中止（通常是客户端已断开）：直接结束，不发送 [DONE]。
+            // 记录一条警告：否则在服务端日志里，这种情况只是一个"空的 200"，无从排查
+            console.warn(`[sse] model run aborted before completion; part types: ${partSummary()}`);
             controller.close();
             return;
           }

@@ -1,5 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSseResponse, type StreamPart } from './sse-response';
+
+afterEach(() => vi.restoreAllMocks());
 
 async function* parts(...items: StreamPart[]): AsyncGenerator<StreamPart> {
   for (const item of items) yield item;
@@ -58,9 +60,36 @@ describe('createSseResponse', () => {
     expect(body).toBe('data: {"text":"a"}\n\nevent: error\ndata: {"message":"AI service error"}\n\n');
   });
 
-  it('ends without [DONE] when the model run was aborted', async () => {
+  it('ends without [DONE] when the model run was aborted, and logs a warning (no longer silent)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const body = await createSseResponse(parts({ type: 'text-delta', text: 'a' }, { type: 'abort' })).text();
     expect(body).toBe('data: {"text":"a"}\n\n');
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('aborted');
+  });
+
+  it('when the reply ends with no text, logs which part types arrived (types and counts only, never content)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const body = await createSseResponse(parts(
+      { type: 'start' },
+      { type: 'reasoning-delta', text: 'secret chain of thought' },
+      { type: 'reasoning-delta', text: 'more' },
+      { type: 'finish' },
+    )).text();
+
+    expect(body).toBe('data: [DONE]\n\n');
+    expect(warn).toHaveBeenCalledTimes(1);
+    const logged = warn.mock.calls[0].map(String).join(' ');
+    expect(logged).toContain('start×1');
+    expect(logged).toContain('reasoning-delta×2');
+    expect(logged).toContain('finish×1');
+    expect(logged).not.toContain('secret chain of thought');
+  });
+
+  it('does not warn for a normal reply that contained text', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await createSseResponse(parts({ type: 'text-delta', text: 'hi' }, { type: 'finish' })).text();
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it('stops pulling from the source when the client cancels the response stream', async () => {
