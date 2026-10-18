@@ -1,6 +1,6 @@
 // pages/api/chat.ts
 import { streamText } from 'ai';
-import { groq } from '@ai-sdk/groq';
+import { createGroq } from '@ai-sdk/groq';
 import { verifySupabaseToken } from '../../lib/auth';
 import { createChatHandler } from '../../lib/chat-handler';
 import { resolveGroqModel } from '../../lib/model';
@@ -18,9 +18,14 @@ export default createChatHandler({
   verifyToken: verifySupabaseToken,
   rateLimiter,
   streamReply: (messages, signal) => {
+    // 显式（静态写法）读取 API key 并传给 provider，不依赖 SDK 内部的 process.env[name] 动态查找。
+    // 缺失时直接抛错：handler 返回 502 并记录 "Model call failed"，而不是返回一个看似成功的 200。
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) throw new Error('GROQ_API_KEY is not configured');
+
     const result = streamText({
       // 每次请求读取，修改 GROQ_MODEL 后重启服务即可生效
-      model: groq(resolveGroqModel()),
+      model: createGroq({ apiKey })(resolveGroqModel()),
       messages,
       abortSignal: signal,
     });
