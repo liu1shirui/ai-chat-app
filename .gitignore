@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local-only files: personal resumes, local stage reports, editor workspace
+/刘诗蕊简历.docx
+/简历ver2.0.docx
+/stage-reports/
+/ai-chat-next.code-workspace
