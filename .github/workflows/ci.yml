@@ -1,0 +1,60 @@
+# 持续集成：每次 push 和 pull request 时运行。
+# 部署仍由 Vercel 的 Git 集成负责，本工作流不做部署，也不使用任何真实密钥。
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Type check, tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # 严格按 package-lock.json 安装
+      - run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Unit and component tests
+        run: npx vitest run
+
+      - name: Production build
+        run: npm run build
+        env:
+          # 仅用于构建的占位值（不是真实项目的地址或密钥）。
+          # 首页在构建时会被预渲染，Supabase 客户端在导入时需要这两个变量存在。
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+          NEXT_TELEMETRY_DISABLED: 1
+
+  # Lint 单独一个 job：不关闭任何规则、也不忽略失败；与上面的检查并行运行，互不阻塞。
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
