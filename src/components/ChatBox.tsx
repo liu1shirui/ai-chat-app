@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useLayoutEffect, useState } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { Message } from '../types';
 import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis';
-import { useMeasuredHeights } from '../hooks/useMeasuredHeights';
+import { useMeasuredHeights, type HeightChange } from '../hooks/useMeasuredHeights';
 import { ESTIMATED_MESSAGE_HEIGHT } from '../lib/height-cache';
 import { isNearBottom } from '../lib/scroll-position';
 import { computeWindow } from '../lib/windowing';
@@ -29,7 +29,12 @@ export const ChatBox: React.FC<Props> = ({ messages, isStreaming = false }) => {
   const virtualized = messages.length > VIRTUALIZE_THRESHOLD;
   // 初始滚动位置取"尽量靠下"：computeWindow 会把它限制到底部，首次渲染直接画出最后几条（会话从底部打开）
   const [viewport, setViewport] = useState({ scrollTop: Number.MAX_SAFE_INTEGER, height: DEFAULT_VIEWPORT });
-  const { getHeight, measureRef } = useMeasuredHeights(ESTIMATED_MESSAGE_HEIGHT);
+  // 高度变化的处理函数在下面（贴底逻辑之后）安装；这里只转发，保证传给 hook 的函数稳定
+  const heightChangeHandlerRef = useRef<(changes: HeightChange[]) => void>(() => {});
+  const { getHeight, measureRef } = useMeasuredHeights(
+    ESTIMATED_MESSAGE_HEIGHT,
+    (changes) => heightChangeHandlerRef.current(changes),
+  );
 
   // "贴底"：用户在底部附近（80px 内）时，新内容到来才自动滚到底；向上翻看历史时不再被拉回。
   // 每次用户滚动都重新判断；程序设置的滚动也会触发 scroll 事件，此时仍在底部，保持贴底。
@@ -68,6 +73,37 @@ export const ChatBox: React.FC<Props> = ({ messages, isStreaming = false }) => {
     pinnedRef.current = isNearBottom(el);
     if (virtualized) readViewport(el);
   };
+
+  // 视口上方的消息高度变化时，下面的内容整体移动；把差值加到 scrollTop 上，正在看的内容保持不动
+  const pendingCorrectionRef = useRef(0);
+  useLayoutEffect(() => {
+    heightChangeHandlerRef.current = (changes) => {
+      const el = scrollRef.current;
+      if (!el) return;
+      const changed = new Map(changes.map((c) => [c.id, c.delta]));
+      const scrollTop = el.scrollTop;
+      // 按"变化之前"的高度累加位置：只有完全在视口上方的消息才需要修正
+      let offset = 0;
+      for (const m of messages) {
+        if (offset >= scrollTop) break;
+        const delta = changed.get(m.id) ?? 0;
+        const oldHeight = getHeight(m.id) - delta;
+        if (delta !== 0 && offset + oldHeight <= scrollTop) pendingCorrectionRef.current += delta;
+        offset += oldHeight;
+      }
+    };
+  });
+
+  // 应用修正：在高度变化引起的重渲染之后、浏览器绘制之前；贴底时由贴底逻辑负责
+  useLayoutEffect(() => {
+    const correction = pendingCorrectionRef.current;
+    if (correction === 0) return;
+    pendingCorrectionRef.current = 0;
+    const el = scrollRef.current;
+    if (!el || pinnedRef.current) return;
+    el.scrollTop += correction;
+    readViewport(el);
+  });
 
   // 有新消息（用户发了新问题、或切换了会话）时停止正在进行的朗读，避免和新内容"抢话"
   const lastId = messages[messages.length - 1]?.id;
