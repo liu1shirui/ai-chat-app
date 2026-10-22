@@ -92,6 +92,9 @@ describe('ChatBox stick-to-bottom scrolling', () => {
     rerender(<ChatBox messages={messages} />);
 
     expect(list.scrollTop).toBe(200);
+    // jsdom ignores scrollTo, so also assert no scroll was even requested
+    // (the old code passed the line above only because of that).
+    expect(Element.prototype.scrollTo).not.toHaveBeenCalled();
   });
 
   it('counts 80px from the bottom as pinned (inclusive)', () => {
@@ -111,6 +114,7 @@ describe('ChatBox stick-to-bottom scrolling', () => {
     rerender(<ChatBox messages={stream(chat, ' more', 100)} />);
 
     expect(list.scrollTop).toBe(position);
+    expect(Element.prototype.scrollTo).not.toHaveBeenCalled();
   });
 
   it('pins again when the user scrolls back near the bottom', () => {
