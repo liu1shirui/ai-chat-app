@@ -76,10 +76,12 @@ export const ChatBox: React.FC<Props> = ({ messages, isStreaming = false }) => {
 
   // 视口上方的消息高度变化时，下面的内容整体移动；把差值加到 scrollTop 上，正在看的内容保持不动
   const pendingCorrectionRef = useRef(0);
+  const heightsChangedRef = useRef(false);
   useLayoutEffect(() => {
     heightChangeHandlerRef.current = (changes) => {
       const el = scrollRef.current;
       if (!el) return;
+      heightsChangedRef.current = true;
       const changed = new Map(changes.map((c) => [c.id, c.delta]));
       const scrollTop = el.scrollTop;
       // 按"变化之前"的高度累加位置：只有完全在视口上方的消息才需要修正
@@ -94,14 +96,19 @@ export const ChatBox: React.FC<Props> = ({ messages, isStreaming = false }) => {
     };
   });
 
-  // 应用修正：在高度变化引起的重渲染之后、浏览器绘制之前；贴底时由贴底逻辑负责
+  // 高度变化引起的重渲染之后、浏览器绘制之前：
+  // - 贴底时：总高度可能变了（流式回复变长、底部消息首次测得真实高度），重新滚到底，保持贴底
+  // - 否则：应用上面的修正量，正在看的内容不动
   useLayoutEffect(() => {
+    const heightsChanged = heightsChangedRef.current;
     const correction = pendingCorrectionRef.current;
-    if (correction === 0) return;
+    heightsChangedRef.current = false;
     pendingCorrectionRef.current = 0;
     const el = scrollRef.current;
-    if (!el || pinnedRef.current) return;
-    el.scrollTop += correction;
+    if (!el || !heightsChanged) return;
+    if (pinnedRef.current) el.scrollTop = el.scrollHeight;
+    else if (correction !== 0) el.scrollTop += correction;
+    else return;
     readViewport(el);
   });
 
