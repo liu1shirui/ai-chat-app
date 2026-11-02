@@ -1,7 +1,8 @@
 // pages/api/chat.ts
-import { streamText } from 'ai';
+import { stepCountIs, streamText } from 'ai';
 import { createGroq } from '@ai-sdk/groq';
 import { verifySupabaseToken } from '../../lib/auth';
+import { chatTools, MAX_TOOL_STEPS } from '../../lib/chat-tools';
 import { createChatHandler } from '../../lib/chat-handler';
 import { resolveGroqModel } from '../../lib/model';
 import { createSlidingWindowLimiter } from '../../lib/rate-limit';
@@ -27,6 +28,10 @@ export default createChatHandler({
       // 每次请求读取，修改 GROQ_MODEL 后重启服务即可生效
       model: createGroq({ apiKey })(resolveGroqModel()),
       messages,
+      // Function Calling：模型可调用 calculate / getCurrentTime；服务端执行后自动把结果交还模型继续生成。
+      // stopWhen 限制最多 MAX_TOOL_STEPS 步，避免模型反复调用工具
+      tools: chatTools,
+      stopWhen: stepCountIs(MAX_TOOL_STEPS),
       abortSignal: signal,
     });
     // 以 Server-Sent Events 返回：文本帧 + [DONE]，模型中途出错时发送 error 事件（见 sse-response.ts）
