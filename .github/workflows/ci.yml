@@ -31,6 +31,10 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
+      # 先打包库（Vite library mode + tsc 声明文件），再跑测试，这样 dist-smoke.test.ts 能校验打包产物
+      - name: Build utility library (Vite library mode)
+        run: npm run build:lib
+
       - name: Unit and component tests
         run: npx vitest run
 
