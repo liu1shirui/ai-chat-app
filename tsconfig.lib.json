@@ -1,0 +1,16 @@
+{
+  // Emits ONLY type declarations (.d.ts) for the library entry; Vite produces the JavaScript.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "declarationMap": true,
+    "allowJs": false,
+    "incremental": false,
+    "outDir": "dist/lib",
+    "rootDir": "src/lib"
+  },
+  "include": ["src/lib/index.ts"],
+  "exclude": ["**/*.test.ts", "node_modules"]
+}

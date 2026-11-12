@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const streamText = vi.hoisted(() => vi.fn());
-vi.mock('ai', () => ({ streamText }));
+vi.mock('ai', () => ({ streamText, stepCountIs: (n: number) => ({ stepCount: n }), tool: <T,>(definition: T) => definition }));
 const createGroq = vi.hoisted(() => vi.fn((options: { apiKey?: string }) => (model: string) => ({ model, apiKey: options.apiKey })));
 vi.mock('@ai-sdk/groq', () => ({ createGroq }));
 vi.mock('@/lib/auth', async (importOriginal) => ({

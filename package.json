@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:lib": "vite build --config vite.config.lib.mts && tsc -p tsconfig.lib.json"
   },
   "dependencies": {
     "@ai-sdk/groq": "^3.0.31",
@@ -19,7 +20,8 @@
     "next": "16.2.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "react-markdown": "^10.1.0"
+    "react-markdown": "^10.1.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",
@@ -36,6 +38,7 @@
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.2",
     "typescript": "^5",
+    "vite": "^8.3.5",
     "vitest": "4.1.11"
   }
 }

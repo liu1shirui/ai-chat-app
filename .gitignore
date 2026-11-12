@@ -45,3 +45,6 @@ next-env.d.ts
 /简历ver2.0.docx
 /stage-reports/
 /ai-chat-next.code-workspace
+
+# library build output (npm run build:lib)
+/dist
