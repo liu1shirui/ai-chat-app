@@ -78,6 +78,8 @@ Edge 函数 src/pages/api/chat.ts
 
 用户身份只从验证通过的 Supabase access token 中得到，不信任请求体中客户端自报的 user id（`src/lib/auth.ts`）。验证时用 anon key 创建一个不持久化会话的客户端，调用 `getUser(token)`，由 Supabase Auth 校验签名和过期时间，因此不需要在项目中额外配置 JWT 密钥。
 
+访问控制分两层：浏览器直接读写 Supabase，受 Row Level Security 限制（见「数据表」）；`/api/chat` 在服务端验证 token，并按用户限流。
+
 ### 滑动窗口限流
 
 `src/lib/rate-limit.ts` 为每个 key 记录窗口内的请求时间戳，超过上限时根据最早一次请求计算 `retryAfterMs`；key 数量超过 10,000 时清理已过期的 key，防止内存无限增长。
@@ -257,17 +259,17 @@ data: [DONE]                                      正常结束
 
 ### 数据表
 
-仓库中没有数据库迁移文件。下表是根据代码中的读写方式（`src/pages/index.tsx`、`src/types.ts`）整理的 `chat_sessions` 表结构，仅供参考：
+仓库中没有建表的迁移文件，RLS 策略见 [`supabase/rls.sql`](supabase/rls.sql)。下表是根据代码中的读写方式（`src/pages/index.tsx`、`src/types.ts`）整理的 `chat_sessions` 表结构，仅供参考：
 
 | 列 | 类型 | 说明 |
 | --- | --- | --- |
 | `id` | `uuid`，主键，默认 `gen_random_uuid()` | 插入时不传，由数据库生成 |
-| `user_id` | `uuid` | 所属用户（`auth.users.id`） |
+| `user_id` | `text` | 所属用户（`auth.users.id`） |
 | `title` | `text` | 首条消息的前 20 个字符 |
 | `created_at` | `timestamptz`，默认 `now()` | 插入时不传；会话列表按它倒序排列 |
 | `messages` | `jsonb` | 消息数组，每项为 `{ id, role, content, createdAt }`，`createdAt` 为 ISO 字符串 |
 
-前端用 anon key 直接读写这张表，更新和删除只按 `id` 过滤，因此需要在 Supabase 中开启 Row Level Security，并添加策略，限制用户只能访问 `user_id = auth.uid()` 的行。
+`chat_sessions` 表已开启 Row Level Security，并配置了 select、insert、update、delete 四条策略：用户只能查询、插入、更新和删除 `user_id` 等于当前登录用户（`auth.uid()`）的行。策略的 SQL 见 [`supabase/rls.sql`](supabase/rls.sql)。
 
 ### 环境变量
 
